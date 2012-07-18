@@ -413,6 +413,10 @@ asm_util::encode_immediate_v2(int is32, uint64_t imm)
 
 // ------------- Stolen from binutils end -------------------------------------
 
+Instruction_aarch64::~Instruction_aarch64() {
+  assem->emit();
+}
+
 bool Assembler::operand_valid_for_logical_immdiate(int is32, uint64_t imm) {
   return encode_immediate_v2(is32, imm) != 0xffffffff;
 }
