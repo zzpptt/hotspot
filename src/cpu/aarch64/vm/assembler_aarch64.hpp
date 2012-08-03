@@ -157,21 +157,27 @@ class Assembler;
 
 class Instruction_aarch64 {
   unsigned insn;
+#ifdef ASSERT
   unsigned bits;
+#endif
   Assembler *assem;
 
 public:
 
   Instruction_aarch64(class Assembler *as) {
+#ifdef ASSERT
     bits = 0;
+#endif
     insn = 0;
     assem = as;
   }
 
-  ~Instruction_aarch64();
+  inline ~Instruction_aarch64();
 
   unsigned &get_insn() { return insn; }
+#ifdef ASSERT
   unsigned &get_bits() { return bits; }
+#endif
 
   static inline int32_t extend(unsigned val, int hi = 31, int lo = 0) {
     union {
@@ -230,7 +236,9 @@ public:
     mask <<= lsb;
     insn |= val;
     assert_cond((bits & mask) == 0);
+#ifdef ASSERT
     bits |= mask;
+#endif
   }
 
   void f(unsigned val, int bit) {
@@ -264,7 +272,9 @@ public:
 
   void fixed(unsigned value, unsigned mask) {
     assert_cond ((mask & bits) == 0);
+#ifdef ASSERT
     bits |= mask;
+#endif
     insn |= value;
   }
 };
@@ -1389,6 +1399,10 @@ public:
   bool operand_valid_for_logical_immdiate(int is32, uint64_t imm);
 };
 
+Instruction_aarch64::~Instruction_aarch64() {
+  assem->emit();
+}
+
 #undef starti
 
 // extra stuff needed to compile
@@ -2337,7 +2351,9 @@ public:
   void c_stub_prolog(u_int64_t calltype);
 };
 
+#ifdef ASSERT
 inline bool AbstractAssembler::pd_check_instruction_mark() { Unimplemented(); return false; }
+#endif
 
 class BiasedLockingCounters;
 
