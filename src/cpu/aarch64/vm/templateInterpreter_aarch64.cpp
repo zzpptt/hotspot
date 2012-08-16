@@ -226,20 +226,19 @@ void InterpreterGenerator::lock_method(void) {
 // interpreted methods and for native methods hence the shared code.
 //
 // Args:
-//      rax: return address
+//      r0: return address
 //      rmethod: methodOop
 //      r14: pointer to locals
 //      rscratch1: sender sp
-//      rdx: cp cache
+//      rcpool: cp cache
 void TemplateInterpreterGenerator::generate_fixed_frame(bool native_call) {
   // initialize fixed part of activation frame
   __ push(r0);        // save return address
   __ enter();          // save old & set new rfp
   __ push(rscratch1);        // set sender sp
   __ push(zr); // leave last_sp as null
-  __ ldr(rbcp, Address(rmethod, methodOopDesc::const_offset()));      // get constMethodOop
-  __ ldr(rscratch1, Address(rmethod, constMethodOopDesc::codes_offset())); // get codebase
-  __ add(rbcp, rbcp, rscratch1);
+  __ ldr(rscratch1, Address(rmethod, methodOopDesc::const_offset()));      // get constMethodOop
+  __ add(rbcp, rscratch1, in_bytes(constMethodOopDesc::codes_offset())); // get codebase
   __ push(rmethod);        // save methodOop
   if (ProfileInterpreter) {
     // Label method_data_continue;
@@ -249,21 +248,32 @@ void TemplateInterpreterGenerator::generate_fixed_frame(bool native_call) {
     // __ addptr(rdx, in_bytes(methodDataOopDesc::data_offset()));
     // __ bind(method_data_continue);
     // __ push(rdx);      // set the mdp (method data pointer)
+    __ push(zr);
   } else {
     __ push(zr);
   }
 
-  __ ldr(r3, Address(rmethod, methodOopDesc::constants_offset()));
-  __ ldr(r3, Address(rmethod, constantPoolOopDesc::cache_offset_in_bytes()));
-  __ push(r3); // set constant pool cache
+  __ ldr(rcpool, Address(rmethod, methodOopDesc::constants_offset()));
+  __ ldr(rcpool, Address(rcpool, constantPoolOopDesc::cache_offset_in_bytes()));
+  __ push(rcpool); // set constant pool cache
   __ push(rlocals); // set locals pointer
   if (native_call) {
     __ push(zr); // no bcp
   } else {
     __ push(rbcp); // set bcp
   }
-  __ push(0); // reserve word for pointer to expression stack bottom
-  __ mov(resp, sp); // set expression stack bottom
+  __ push(zr); // reserve word for pointer to expression stack bottom
+  __ mov(resp, sp);
+  __ str(resp, Address(sp));
+
+  const Address size_of_parameters(rmethod, methodOopDesc::size_of_parameters_offset());
+  const Address size_of_locals    (rmethod, methodOopDesc::size_of_locals_offset());
+  const Address max_stack         (rmethod, methodOopDesc::max_stack_offset());
+
+  // FIXME: Move the HW stack out of the way.  I'm not totally sure about any of this.
+  __ ldrh(rscratch1, max_stack);
+  __ sub(rscratch1, sp, rscratch1);
+  __ andr(sp, rscratch1, -16);
 }
 
 // End of helpers
@@ -318,7 +328,7 @@ address InterpreterGenerator::generate_native_entry(bool synchronized) {
   // for natives the size of locals is zero
 
   // compute beginning of parameters (rlocals)
-  __ add(rlocals, sp, r2, Assembler::LSL, 3);
+  __ add(rlocals, sp, r2, ext::uxtx, 3);  // FIXME: Should be resp ???
   __ add(rlocals, rlocals, wordSize);
 
   // add 2 zero-initialized slots for native calls
@@ -407,7 +417,8 @@ address InterpreterGenerator::generate_native_entry(bool synchronized) {
     const Address monitor_block_top(rfp,
                  frame::interpreter_frame_monitor_block_top_offset * wordSize);
     __ ldr(r0, monitor_block_top);
-    __ cmp(r0, sp);  // FIXME: rsp or resp??
+    __ mov(rscratch1, sp);
+    __ cmp(rscratch1, r0);
     __ br(Assembler::EQ, L);
     __ stop("broken stack frame setup in interpreter");
     __ bind(L);
@@ -427,9 +438,9 @@ address InterpreterGenerator::generate_native_entry(bool synchronized) {
                                  methodOopDesc::size_of_parameters_offset()));
   __ lsl(t, t, Interpreter::logStackElementSize);
 
-  __ sub(sp, sp, t);
-  __ sub(sp, sp, frame::arg_reg_save_area_bytes); // windows
-  __ andr(sp, sp, -16); // must be 16 byte boundary
+  __ sub(rscratch1, sp, t, ext::uxtx, 0);
+  __ sub(rscratch1, rscratch1, frame::arg_reg_save_area_bytes); // windows
+  __ andr(sp, rscratch1, -16); // must be 16 byte boundary
 
   // get signature handler
   {
@@ -751,15 +762,18 @@ address InterpreterGenerator::generate_normal_entry(bool synchronized) {
                                    InvocationCounter::counter_offset());
   const Address access_flags(r1, methodOopDesc::access_flags_offset());
 
+  __ enter();
+
   // get parameter size (always needed)
   __ load_unsigned_short(r2, size_of_parameters);
 
+  __ mov(rscratch1, j_rarg1); // Sender SP
   // r1: methodOop
   // r2: size of parameters
   // rscratch1: sender_sp (could differ from sp+wordSize if we were called via c2i )
 
   __ load_unsigned_short(r3, size_of_locals); // get size of locals in words
-  __ sub(r3, r2, r2); // r3 = no. of additional locals
+  __ sub(r3, r3, r2); // r3 = no. of additional locals
 
   // YYY
 //   __ incrementl(rdx);
@@ -772,7 +786,7 @@ address InterpreterGenerator::generate_normal_entry(bool synchronized) {
   __ pop(r0);
 
   // compute beginning of parameters (rlocals)
-  __ add(rlocals, sp, r2, Assembler::LSL, 3);
+  __ add(rlocals, sp, r2, ext::uxtx, 3);  // FIXME: Should be resp ???
   __ add(rlocals, rlocals, wordSize);
 
   // rdx - # of additional locals
@@ -781,7 +795,7 @@ address InterpreterGenerator::generate_normal_entry(bool synchronized) {
   {
     Label exit, loop;
     __ ands(r3, r3, r3);
-    __ br(Assembler::LE, exit); // do nothing if rdx <= 0
+    __ br(Assembler::LE, exit); // do nothing if r3 <= 0
     __ bind(loop);
     __ push((int) NULL_WORD); // initialize local variables
     __ subs(r3, r3, 1); // until everything initialized
@@ -806,7 +820,7 @@ address InterpreterGenerator::generate_normal_entry(bool synchronized) {
     __ stop("tried to execute native method as non-native");
     __ bind(L);
   }
-  {
+ {
     Label L;
     __ tst(r0, JVM_ACC_ABSTRACT);
     __ br(Assembler::EQ, L);
@@ -877,7 +891,8 @@ address InterpreterGenerator::generate_normal_entry(bool synchronized) {
      const Address monitor_block_top (rfp,
                  frame::interpreter_frame_monitor_block_top_offset * wordSize);
     __ ldr(r0, monitor_block_top);
-    __ cmp(r0, sp);
+    __ mov(rscratch1, sp);
+    __ cmp(rscratch1, r0);
     __ br(Assembler::EQ, L);
     __ stop("broken stack frame setup in interpreter");
     __ bind(L);
