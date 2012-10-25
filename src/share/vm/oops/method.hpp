@@ -99,7 +99,6 @@
 // | signature_handler     (present only if native)       |
 // |------------------------------------------------------|
 
-
 class CheckedExceptionElement;
 class LocalVariableTableElement;
 class AdapterHandlerEntry;
@@ -456,6 +455,12 @@ class Method : public Metadata {
   address signature_handler() const              { return *(signature_handler_addr()); }
   void set_signature_handler(address handler);
 
+#ifdef TARGET_ARCH_aarch64
+  address *call_format_addr() const        { return native_function_addr() + 2; }
+  static ByteSize call_format_offset()    { return in_ByteSize(sizeof(Method) + 2 * wordSize);      }
+  void set_call_format(unsigned int call_format);
+  int unsigned call_format();
+#endif
   // Interpreter oopmap support
   void mask_for(int bci, InterpreterOopMap* mask);
 
@@ -585,7 +590,7 @@ class Method : public Metadata {
   static ByteSize const_offset()                 { return byte_offset_of(Method, _constMethod       ); }
   static ByteSize access_flags_offset()          { return byte_offset_of(Method, _access_flags      ); }
 #ifdef CC_INTERP
-  static ByteSize result_index_offset()          { return byte_offset_of(Method, _result_index ); }
+  static ByteSize result_index_offset(b)          { return byte_offset_of(Method, _result_index ); }
 #endif /* CC_INTERP */
   static ByteSize size_of_locals_offset()        { return byte_offset_of(Method, _max_locals        ); }
   static ByteSize size_of_parameters_offset()    { return byte_offset_of(Method, _size_of_parameters); }

@@ -50,7 +50,6 @@ inline void AbstractAssembler::emit_word(int x) {
   sync();
 }
 
-
 inline void AbstractAssembler::emit_long(jint x) {
   *(jint*)_code_pos = x;
   _code_pos += sizeof(jint);

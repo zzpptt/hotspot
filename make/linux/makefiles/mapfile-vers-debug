@@ -264,6 +264,10 @@ SUNWprivate_1.1 {
 
 		# INSERT VTABLE SYMBOLS HERE
 
+		# Disassembly support
+		das1;
+		bccheck;
+
         local:
                 *;
 };
