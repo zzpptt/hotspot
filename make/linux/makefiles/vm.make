@@ -122,7 +122,9 @@ LFLAGS += $(EXTRA_CFLAGS)
 # the same could be done by separate execstack command
 LFLAGS += -Xlinker -z -Xlinker noexecstack
 
-LIBS += -lm -ldl -lpthread
+ARMSIM_DIR = $(shell cd ../../../../../../../simulator/ && pwd)
+
+LIBS += -lm -ldl -lpthread -L $(ARMSIM_DIR) -larmsim -Wl,-rpath,$(ARMSIM_DIR)
 
 # By default, link the *.o into the library, not the executable.
 LINK_INTO$(LINK_INTO) = LIBJVM
@@ -152,8 +154,8 @@ SOURCE_PATHS=\
       \( -name DUMMY $(foreach dir,$(SPECIAL_PATHS),-o -name $(dir)) \))
 SOURCE_PATHS+=$(HS_COMMON_SRC)/os/$(Platform_os_family)/vm
 SOURCE_PATHS+=$(HS_COMMON_SRC)/os/posix/vm
-SOURCE_PATHS+=$(HS_COMMON_SRC)/cpu/$(Platform_arch)/vm
-SOURCE_PATHS+=$(HS_COMMON_SRC)/os_cpu/$(Platform_os_arch)/vm
+SOURCE_PATHS+=$(HS_COMMON_SRC)/cpu/aarch64/vm
+SOURCE_PATHS+=$(HS_COMMON_SRC)/os_cpu/linux_aarch64/vm
 
 ifndef JAVASE_EMBEDDED 
 ifneq (${ARCH},arm)
@@ -215,7 +217,7 @@ endif
 # Locate all source files in the given directory, excluding files in Src_Files_EXCLUDE.
 define findsrc
 	$(notdir $(shell find $(1)/. ! -name . -prune \
-		-a \( -name \*.c -o -name \*.cpp -o -name \*.s \) \
+		-a \( -name \*.c -o -name \*.cpp -o -name \*.s -o -name \*.S \) \
 		-a ! \( -name DUMMY $(addprefix -o -name ,$(Src_Files_EXCLUDE)) \)))
 endef
 
@@ -309,6 +311,8 @@ $(LD_SCRIPT): $(LIBJVM_MAPFILE)
 	}
 LD_SCRIPT_FLAG = -Wl,-T,$(LD_SCRIPT)
 endif
+
+STRIP_POLICY=no_strip
 
 # With more recent Redhat releases (or the cutting edge version Fedora), if
 # SELinux is configured to be enabled, the runtime linker will fail to apply

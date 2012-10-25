@@ -291,7 +291,12 @@ address Method::bcp_from(int bci) const {
 
 int Method::size(bool is_native) {
   // If native, then include pointers for native_function and signature_handler
+#ifdef TARGET_ARCH_aarch64
+  // aarch64 requires extra word for call format
+  int extra_bytes = (is_native) ? 3*sizeof(address*) : 0;
+#else
   int extra_bytes = (is_native) ? 2*sizeof(address*) : 0;
+#endif // TARGET_ARCH_aarch64
   int extra_words = align_size_up(extra_bytes, BytesPerWord) / BytesPerWord;
   return align_object_size(header_size() + extra_words);
 }
@@ -687,6 +692,16 @@ void Method::set_signature_handler(address handler) {
   *signature_handler = handler;
 }
 
+#ifdef TARGET_ARCH_aarch64
+void Method::set_call_format(unsigned int call_format) {
+  unsigned int* call_format_p =  (unsigned int *)call_format_addr();
+  *call_format_p = call_format;
+}
+
+unsigned int Method::call_format() {
+  return *(unsigned int *)call_format_addr();
+}
+#endif
 
 bool Method::is_not_compilable(int comp_level) const {
   if (number_of_breakpoints() > 0) {
