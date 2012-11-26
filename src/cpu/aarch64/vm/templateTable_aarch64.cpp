@@ -92,33 +92,33 @@ static inline Address aaddress(Register r) {
 }
 
 static inline Address at_rsp() {
-  return Address(sp, 0);
+  return Address(esp, 0);
 }
 
 // At top of Java expression stack which may be different than esp().  It
 // isn't for category 1 objects.
 static inline Address at_tos   () {
-  return Address(sp,  Interpreter::expr_offset_in_bytes(0));
+  return Address(esp,  Interpreter::expr_offset_in_bytes(0));
 }
 
 static inline Address at_tos_p1() {
-  return Address(sp,  Interpreter::expr_offset_in_bytes(1));
+  return Address(esp,  Interpreter::expr_offset_in_bytes(1));
 }
 
 static inline Address at_tos_p2() {
-  return Address(sp,  Interpreter::expr_offset_in_bytes(2));
+  return Address(esp,  Interpreter::expr_offset_in_bytes(2));
 }
 
 static inline Address at_tos_p3() {
-  return Address(sp,  Interpreter::expr_offset_in_bytes(3));
+  return Address(esp,  Interpreter::expr_offset_in_bytes(3));
 }
 
 static inline Address at_tos_p4() {
-  return Address(sp,  Interpreter::expr_offset_in_bytes(4));
+  return Address(esp,  Interpreter::expr_offset_in_bytes(4));
 }
 
 static inline Address at_tos_p5() {
-  return Address(sp,  Interpreter::expr_offset_in_bytes(5));
+  return Address(esp,  Interpreter::expr_offset_in_bytes(5));
 }
 
 // Condition conversion
@@ -946,7 +946,7 @@ void TemplateTable::aastore() {
 
   // Pop stack arguments
   __ bind(done);
-  __ add(sp, sp, 3 * Interpreter::stackElementSize);
+  __ add(esp, esp, 3 * Interpreter::stackElementSize);
 }
 
 void TemplateTable::bastore()
@@ -1016,19 +1016,19 @@ void TemplateTable::astore(int n)
 void TemplateTable::pop()
 {
   transition(vtos, vtos);
-  __ add(sp, sp, Interpreter::stackElementSize);
+  __ add(esp, esp, Interpreter::stackElementSize);
 }
 
 void TemplateTable::pop2()
 {
   transition(vtos, vtos);
-  __ add(sp, sp, 2 * Interpreter::stackElementSize);
+  __ add(esp, esp, 2 * Interpreter::stackElementSize);
 }
 
 void TemplateTable::dup()
 {
   transition(vtos, vtos);
-  __ ldr(r0, Address(sp, 0));
+  __ ldr(r0, Address(esp, 0));
   __ push(r0);
   // stack: ..., a, a
 }
@@ -2595,7 +2595,7 @@ void TemplateTable::prepare_invoke(int byte_no,
     // const int receiver_is_at_end      = -1;  // back off one slot to get receiver
     // Address recv_addr = __ argument_address(recv, no_return_pc_pushed_yet + receiver_is_at_end);
     // __ movptr(recv, recv_addr);
-    __ add(rscratch1, sp, recv, ext::uxtx, 3); // FIXME: uxtb here?
+    __ add(rscratch1, esp, recv, ext::uxtx, 3); // FIXME: uxtb here?
     __ sub(rscratch1, rscratch1, Interpreter::expr_offset_in_bytes(1));
     __ ldr(recv, Address(rscratch1));
     __ verify_oop(recv);
@@ -3121,7 +3121,7 @@ void TemplateTable::athrow() {
 //
 // Stack layout:
 //
-// [expressions  ] <--- rsp               = expression stack top
+// [expressions  ] <--- esp               = expression stack top
 // ..
 // [expressions  ]
 // [monitor entry] <--- monitor block top = expression stack bot
@@ -3181,13 +3181,20 @@ void TemplateTable::monitorenter()
 
   // allocate one if there's no free slot
   {
-    Label entry, loop;
+    Label entry, loop, no_adjust;
     // 1. compute new pointers            // rsp: old expression stack top
     __ ldr(c_rarg1, monitor_block_bot);   // c_rarg1: old expression stack bottom
-    __ sub(sp, sp, entry_size);           // move expression stack top
+    __ sub(esp, esp, entry_size);           // move expression stack top
     __ sub(c_rarg1, c_rarg1, entry_size); // move expression stack bottom
-    __ mov(c_rarg3, sp);                 // set start value for copy loop
+    __ mov(c_rarg3, esp);                 // set start value for copy loop
     __ str(c_rarg1, monitor_block_bot);   // set new monitor block bottom
+
+    __ cmp(sp, c_rarg1);                  // Check if we need to move sp
+    __ br(Assembler::LO, no_adjust);      // to allow more stack space
+					  // for our new esp
+    __ sub(sp, sp, 2 * wordSize);
+    __ bind(no_adjust);
+
     __ b(entry);
     // 2. move expression stack contents
     __ bind(loop);
@@ -3294,12 +3301,12 @@ void TemplateTable::multianewarray() {
   __ load_unsigned_byte(r0, at_bcp(3)); // get number of dimensions
   // last dim is on top of stack; we want address of first one:
   // first_addr = last_addr + (ndims - 1) * wordSize
-  __ lea(c_rarg1, Address(sp, r0, Address::uxtw(3)));
+  __ lea(c_rarg1, Address(esp, r0, Address::uxtw(3)));
   __ sub(c_rarg1, c_rarg1, wordSize);
   call_VM(r0,
           CAST_FROM_FN_PTR(address, InterpreterRuntime::multianewarray),
           c_rarg1);
   __ load_unsigned_byte(r1, at_bcp(3));
-  __ lea(sp, Address(sp, r1, Address::uxtw(3)));
+  __ lea(esp, Address(esp, r1, Address::uxtw(3)));
 }
 #endif // !CC_INTERP

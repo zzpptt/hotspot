@@ -133,7 +133,7 @@ REGISTER_DECLARATION(Register, rbcp,      r22);
 // Dispatch table base
 REGISTER_DECLARATION(Register, rdispatch,      r21);
 // Java stack pointer
-REGISTER_DECLARATION(Register, jsp,      r20);
+REGISTER_DECLARATION(Register, esp,      r20);
 
 // TODO : x86 uses rbp to save SP in method handle code
 // we may need to do the same with fp
@@ -565,7 +565,7 @@ const int FPUStateSizeInWords = 27; // FIXME   :-)
 class Assembler : public AbstractAssembler {
 
 #ifndef PRODUCT
-  const static unsigned long asm_bp = 0x00007fffee08fddc;
+  static const unsigned long asm_bp;
 
   void emit_long(jint x) {
     if ((unsigned long)pc() == asm_bp)
@@ -1071,7 +1071,7 @@ public:
 	      Register Rt1, Register Rt2, Address adr, bool no_allocate) {
     starti;
     f(opc, 31, 30), f(p1, 29, 27), f(V, 26), f(L, 22);
-    rf(Rt2, 10), rf(Rt1, 0);
+    zrf(Rt2, 10), zrf(Rt1, 0);
     if (no_allocate) {
       adr.encode_nontemporal_pair(current);
     } else {
@@ -2823,8 +2823,8 @@ public:
   void pusha();
   void popa();
 
-  void push(unsigned int bitset);
-  void pop(unsigned int bitset);
+  void push(unsigned int bitset, Register stack);
+  void pop(unsigned int bitset, Register stack);
 
   void repne_scan(Register addr, Register value, Register count,
 		  Register scratch);
