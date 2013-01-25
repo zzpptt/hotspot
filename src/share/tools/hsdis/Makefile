@@ -56,6 +56,7 @@ else
 ifeq		($(OS),Linux)
 ifneq           ($(MINGW),)
 LIB_EXT		= .dll
+CPPFLAGS += -g	
 CPPFLAGS += -I$(TARGET_DIR)/include
 LDFLAGS += -L$(TARGET_DIR)/lib
 OS=windows
@@ -83,8 +84,10 @@ CFLAGS		+= -fPIC
 OS		= linux
 LIB_EXT		= .so
 CC 		= gcc
+CONFIGURE_ARGS= --target=aarch64-none-linux-gnu
 endif
-CFLAGS		+= -O
+CFLAGS		+= -g
+CFLAGS		+= -O0
 DLDFLAGS	+= -shared
 LDFLAGS         += -ldl
 OUTFLAGS	+= -o $@
