@@ -133,9 +133,13 @@ Address LIR_Assembler::as_Address(LIR_Address* addr, Register tmp) {
     assert(addr->disp() == 0, "must be");
     return Address(base, index, Address::sxtw(addr->scale()));
   } else  {
-    intptr_t addr_offset = (intptr_t(addr->disp()) << addr->scale());
-    assert(Address::offset_ok_for_immed(addr_offset, 0), "must be");
-    return Address(base, addr_offset);
+    intptr_t addr_offset = intptr_t(addr->disp());
+    if (Address::offset_ok_for_immed(addr_offset, addr->scale()))
+      return Address(base, addr_offset, Address::lsl(addr->scale()));
+    else {
+      __ mov64(rscratch1, addr_offset); // Make a full four-instruction mov
+      return Address(base, rscratch1, Address::lsl(addr->scale()));
+    }
   }
 }
 
@@ -191,7 +195,21 @@ void LIR_Assembler::jobject2reg(jobject o, Register reg) {
   }
 }
 
-void LIR_Assembler::jobject2reg_with_patching(Register reg, CodeEmitInfo* info) { Unimplemented(); }
+void LIR_Assembler::jobject2reg_with_patching(Register reg, CodeEmitInfo *info) {
+  // Allocate a new index in table to hold the object once it's been patched
+  int oop_index = __ oop_recorder()->allocate_oop_index(NULL);
+  PatchingStub* patch = new PatchingStub(_masm, PatchingStub::load_mirror_id, oop_index);
+
+  Address addrlit(NULL, oop_Relocation::spec(oop_index));
+  assert(addrlit.rspec().type() == relocInfo::oop_type, "must be an oop reloc");
+  // It may not seem necessary to use a movz/movk quad to load a NULL
+  // into dest, but the NULL will be dynamically patched later and the
+  // patched value may be large.  We must therefore generate the
+  // sethi/add as a placeholders
+  __ mov(reg, addrlit);
+
+  patching_epilog(patch, lir_patch_normal, reg, info);
+}
 
 
 // This specifies the rsp decrement needed to build the frame
@@ -1208,7 +1226,34 @@ void LIR_Assembler::emit_static_call_stub() {
 }
 
 
-void LIR_Assembler::throw_op(LIR_Opr exceptionPC, LIR_Opr exceptionOop, CodeEmitInfo* info) { Unimplemented(); }
+void LIR_Assembler::throw_op(LIR_Opr exceptionPC, LIR_Opr exceptionOop, CodeEmitInfo* info) {
+  assert(exceptionOop->as_register() == r0, "must match");
+  assert(exceptionPC->as_register() == r3, "must match");
+
+  // exception object is not added to oop map by LinearScan
+  // (LinearScan assumes that no oops are in fixed registers)
+  info->add_register_oop(exceptionOop);
+  Runtime1::StubID unwind_id;
+
+  // get current pc information
+  // pc is only needed if the method has an exception handler, the unwind code does not need it.
+  int pc_for_athrow_offset = __ offset();
+  InternalAddress pc_for_athrow(__ pc());
+  __ lea(exceptionPC->as_register(), pc_for_athrow);
+  add_call_info(pc_for_athrow_offset, info); // for exception handler
+
+  __ verify_not_null_oop(r0);
+  // search an exception handler (rax: exception oop, rdx: throwing pc)
+  if (compilation()->has_fpu_code()) {
+    unwind_id = Runtime1::handle_exception_id;
+  } else {
+    unwind_id = Runtime1::handle_exception_nofpu_id;
+  }
+  __ bl(RuntimeAddress(Runtime1::entry_for(unwind_id)));
+
+  // FIXME: enough room for two byte trap   ????
+  __ nop();
+}
 
 
 void LIR_Assembler::unwind_op(LIR_Opr exceptionOop) {
@@ -1266,13 +1311,33 @@ void LIR_Assembler::shift_op(LIR_Code code, LIR_Opr left, jint count, LIR_Opr de
 }
 
 
-void LIR_Assembler::store_parameter(Register r, int offset_from_rsp_in_words) { Unimplemented(); }
+void LIR_Assembler::store_parameter(Register r, int offset_from_rsp_in_words) {
+  ShouldNotReachHere();
+  assert(offset_from_rsp_in_words >= 0, "invalid offset from rsp");
+  int offset_from_rsp_in_bytes = offset_from_rsp_in_words * BytesPerWord;
+  assert(offset_from_rsp_in_bytes < frame_map()->reserved_argument_area_size(), "invalid offset");
+  __ str (r, Address(sp, offset_from_rsp_in_bytes));
+}
 
 
-void LIR_Assembler::store_parameter(jint c,     int offset_from_rsp_in_words) { Unimplemented(); }
+void LIR_Assembler::store_parameter(jint c,     int offset_from_rsp_in_words) {
+  ShouldNotReachHere();
+  assert(offset_from_rsp_in_words >= 0, "invalid offset from rsp");
+  int offset_from_rsp_in_bytes = offset_from_rsp_in_words * BytesPerWord;
+  assert(offset_from_rsp_in_bytes < frame_map()->reserved_argument_area_size(), "invalid offset");
+  __ mov (rscratch1, c);
+  __ str (rscratch1, Address(sp, offset_from_rsp_in_bytes));
+}
 
 
-void LIR_Assembler::store_parameter(jobject o,  int offset_from_rsp_in_words) { Unimplemented(); }
+void LIR_Assembler::store_parameter(jobject o,  int offset_from_rsp_in_words) {
+  ShouldNotReachHere();
+  assert(offset_from_rsp_in_words >= 0, "invalid offset from rsp");
+  int offset_from_rsp_in_bytes = offset_from_rsp_in_words * BytesPerWord;
+  assert(offset_from_rsp_in_bytes < frame_map()->reserved_argument_area_size(), "invalid offset");
+  __ lea(rscratch1, __ constant_oop_address(o));
+  __ str(rscratch1, Address(sp, offset_from_rsp_in_bytes));
+}
 
 
 // This code replaces a call to arraycopy; no exception may
@@ -1321,39 +1386,48 @@ void LIR_Assembler::leal(LIR_Opr addr, LIR_Opr dest) { Unimplemented(); }
 
 void LIR_Assembler::rt_call(LIR_Opr result, address dest, const LIR_OprList* args, LIR_Opr tmp, CodeEmitInfo* info) {
   assert(!tmp->is_valid(), "don't need temporary");
-  __ mov(rscratch1, RuntimeAddress(dest));
-  int len = args->length();
-  int type;
-  switch (result->type()) {
-  case T_VOID:
-    type = 0;
-    break;
-  case T_INT:
-  case T_LONG:
-  case T_OBJECT:
-    type = 1;
-    break;
-  case T_FLOAT:
-    type = 2;
-    break;
-  case T_DOUBLE:
-    type = 3;
-    break;
-  default:
-    ShouldNotReachHere();
-    break;
-  }
-  int num_gpargs = 0;
-  int num_fpargs = 0;
-  for (int i = 0; i < args->length(); i++) {
-    LIR_Opr arg = args->at(i);
-    if (arg->type() == T_FLOAT || arg->type() == T_DOUBLE) {
-      num_fpargs++;
-    } else {
-      num_gpargs++;
+
+  CodeBlob *cb = CodeCache::find_blob(dest);
+  if (cb) {
+    __ bl(RuntimeAddress(dest));
+  } else {
+    __ mov(rscratch1, RuntimeAddress(dest));
+    int len = args->length();
+    int type = 0;
+    if (! result->is_illegal()) {
+      switch (result->type()) {
+      case T_VOID:
+	type = 0;
+	break;
+      case T_INT:
+      case T_LONG:
+      case T_OBJECT:
+	type = 1;
+	break;
+      case T_FLOAT:
+	type = 2;
+	break;
+      case T_DOUBLE:
+	type = 3;
+	break;
+      default:
+	ShouldNotReachHere();
+	break;
+      }
     }
+    int num_gpargs = 0;
+    int num_fpargs = 0;
+    for (int i = 0; i < args->length(); i++) {
+      LIR_Opr arg = args->at(i);
+      if (arg->type() == T_FLOAT || arg->type() == T_DOUBLE) {
+	num_fpargs++;
+      } else {
+	num_gpargs++;
+      }
+    }
+    __ brx86(rscratch1, num_gpargs, num_fpargs, type);
   }
-  __ brx86(rscratch1, num_gpargs, num_fpargs, type);
+
   if (info != NULL) {
     add_call_info_here(info);
   }

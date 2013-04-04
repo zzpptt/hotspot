@@ -61,7 +61,23 @@ RangeCheckStub::RangeCheckStub(CodeEmitInfo* info, LIR_Opr index,
   _info = new CodeEmitInfo(info);
 }
 
-void RangeCheckStub::emit_code(LIR_Assembler* ce) { __ call_Unimplemented(); }
+void RangeCheckStub::emit_code(LIR_Assembler* ce) {
+  __ bind(_entry);
+  if (_index->is_cpu_register()) {
+    __ mov(rscratch1, _index->as_register());
+  } else {
+    __ mov(rscratch1, _index->as_jint());
+  }
+  Runtime1::StubID stub_id;
+  if (_throw_index_out_of_bounds_exception) {
+    stub_id = Runtime1::throw_index_exception_id;
+  } else {
+    stub_id = Runtime1::throw_range_check_failed_id;
+  }
+  __ call(RuntimeAddress(Runtime1::entry_for(stub_id)));
+  ce->add_call_info_here(_info);
+  debug_only(__ should_not_reach_here());
+}
 
 void DivByZeroStub::emit_code(LIR_Assembler* ce) {
   if (_offset != -1) {
@@ -194,18 +210,8 @@ void PatchingStub::emit_code(LIR_Assembler* ce) {
   } else if (_id == load_mirror_id) {
     // produce a copy of the load mirror instruction for use by the being
     // initialized case
-#ifdef ASSERT
-    address start = __ pc();
-#endif
     jobject o = NULL;
-    __ mov(_obj, zr);
-#ifdef ASSERT
-    for (int i = 0; i < _bytes_to_copy; i++) {
-      address ptr = (address)(_pc_start + i);
-      int a_byte = (*ptr) & 0xFF;
-      assert(a_byte == *start++, "should be the same code");
-    }
-#endif
+    __ mov(_obj, Address((address)NULL, relocInfo::none));
   } else {
     // make a copy the code which is going to be patched.
     for (int i = 0; i < _bytes_to_copy; i++) {
@@ -253,8 +259,15 @@ void PatchingStub::emit_code(LIR_Assembler* ce) {
   // emit the offsets needed to find the code to patch
   int being_initialized_entry_offset = __ pc() - being_initialized_entry + sizeof_patch_record;
 
-  __ movzw(r0, being_initialized_entry_offset << 8);
-  __ movkw(r0, (bytes_to_skip) + (_bytes_to_copy << 8), 16);
+  {
+    Label L;
+    __ br(Assembler::AL, L);
+    __ emit_int8(0);
+    __ emit_int8(being_initialized_entry_offset);
+    __ emit_int8(bytes_to_skip);
+    __ emit_int8(_bytes_to_copy);
+    __ bind(L);
+  }
 
   address patch_info_pc = __ pc();
   assert(patch_info_pc - end_of_patch == bytes_to_skip, "incorrect patch info");
@@ -281,6 +294,7 @@ void PatchingStub::emit_code(LIR_Assembler* ce) {
   __ b(_patch_site_entry);
   // Add enough nops so deoptimization can overwrite the jmp above with a call
   // and not destroy the world.
+  // FIXME: AArch64 doesn't really need this
   __ nop(); __ nop();
   if (_id == load_klass_id || _id == load_mirror_id) {
     CodeSection* cs = __ code_section();
@@ -293,7 +307,13 @@ void PatchingStub::emit_code(LIR_Assembler* ce) {
 void DeoptimizeStub::emit_code(LIR_Assembler* ce) { Unimplemented(); }
 
 
-void ImplicitNullCheckStub::emit_code(LIR_Assembler* ce) { Unimplemented(); }
+void ImplicitNullCheckStub::emit_code(LIR_Assembler* ce) {
+  ce->compilation()->implicit_exception_table()->append(_offset, __ offset());
+  __ bind(_entry);
+  __ bl(RuntimeAddress(Runtime1::entry_for(Runtime1::throw_null_pointer_exception_id)));
+  ce->add_call_info_here(_info);
+  debug_only(__ should_not_reach_here());
+}
 
 
 void SimpleExceptionStub::emit_code(LIR_Assembler* ce) { Unimplemented(); }
