@@ -1214,8 +1214,30 @@ Disassembly of section .text:
 
 #undef __
 
+void Assembler::emit_data64(jlong data,
+                            relocInfo::relocType rtype,
+                            int format) {
+  if (rtype == relocInfo::none) {
+    emit_int64(data);
+  } else {
+    emit_data64(data, Relocation::spec_simple(rtype), format);
+  }
+}
+
+void Assembler::emit_data64(jlong data,
+                            RelocationHolder const& rspec,
+                            int format) {
+
+  assert(inst_mark() != NULL, "must be inside InstructionMark");
+  // Do not use AbstractAssembler::relocate, which is not intended for
+  // embedded words.  Instead, relocate to the enclosing instruction.
+  code_section()->relocate(inst_mark(), rspec, format);
+  emit_int64(data);
+}
+
 extern "C" {
   void das(uint64_t start, int len) {
+    ResourceMark rm;
     len <<= 2;
     if (len < 0)
       Disassembler::decode((address)start + len, (address)start);
@@ -1320,6 +1342,7 @@ Address::Address(address target, relocInfo::relocType rtype) : _mode(literal){
     _rspec = Relocation::spec_simple(rtype);
     break;
   case relocInfo::none:
+    _rspec = RelocationHolder::none;
     break;
   default:
     ShouldNotReachHere();

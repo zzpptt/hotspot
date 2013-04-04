@@ -976,6 +976,10 @@ void MacroAssembler::mov(Register r, Address dest) {
   InstructionMark im(this);
   code_section()->relocate(inst_mark(), dest.rspec());
   u_int64_t imm64 = (u_int64_t)dest.target();
+  mov64(r, imm64);
+}
+
+void MacroAssembler::mov64(Register r, uintptr_t imm64) {
   movz(r, imm64 & 0xffff);
   imm64 >>= 16;
   movk(r, imm64 & 0xffff, 16);
@@ -1746,8 +1750,9 @@ SkipIfEqual::~SkipIfEqual() {
 }
 
 void MacroAssembler::cmpptr(Register src1, Address src2) {
-  lea(rscratch1, src2);
-  ldr(rscratch1, Address(rscratch1));
+  unsigned long offset;
+  adrp(rscratch1, src2, offset);
+  ldr(rscratch1, Address(rscratch1, offset));
   cmp(src1, rscratch1);
 }
 
@@ -2069,9 +2074,27 @@ Address MacroAssembler::allocate_metadata_address(Metadata* obj) {
   return Address((address)obj, rspec);
 }
 
+void MacroAssembler::movoop(Register dst, jobject obj) {
+  if (obj == NULL) {
+    mov(dst, zr);
+  } else {
+    int oop_index = oop_recorder()->find_index(obj);
+    assert(Universe::heap()->is_in_reserved(JNIHandles::resolve(obj)), "should be real oop");
+    RelocationHolder rspec = oop_Relocation::spec(oop_index);
+    mov(dst, Address((address)obj, rspec));
+  }
+}
+
 void MacroAssembler::mov_metadata(Register dst, Metadata* obj) {
   unsigned long offset;
   mov(dst, allocate_metadata_address(obj));
+}
+
+Address MacroAssembler::constant_oop_address(jobject obj) {
+  assert(oop_recorder() != NULL, "this assembler needs an OopRecorder");
+  assert(Universe::heap()->is_in_reserved(JNIHandles::resolve(obj)), "not an oop");
+  int oop_index = oop_recorder()->find_index(obj);
+  return Address((address)obj, oop_Relocation::spec(oop_index));
 }
 
 // Defines obj, preserves var_size_in_bytes, okay for t2 == var_size_in_bytes.
