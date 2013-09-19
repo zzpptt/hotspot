@@ -2177,7 +2177,8 @@ void LIR_Assembler::emit_arraycopy(LIR_OpArrayCopy* op) {
   if (basic_type == T_ARRAY) basic_type = T_OBJECT;
 
   // if we don't know anything, just go through the generic arraycopy
-  if (default_type == NULL || (basic_type == T_OBJECT && UseCompressedOops)) {
+  if (default_type == NULL // || basic_type == T_OBJECT
+      ) {
     Label done;
     assert(src == r1 && src_pos == r2, "mismatch in calling convention");
 
@@ -2488,7 +2489,13 @@ void LIR_Assembler::emit_arraycopy(LIR_OpArrayCopy* op) {
   bool aligned = (flags & LIR_OpArrayCopy::unaligned) == 0;
   const char *name;
   address entry = StubRoutines::select_arraycopy_function(basic_type, aligned, disjoint, name, false);
-  __ call_VM_leaf(entry, 3);
+
+ CodeBlob *cb = CodeCache::find_blob(entry);
+ if (cb) {
+   __ bl(RuntimeAddress(entry));
+ } else {
+   __ call_VM_leaf(entry, 3);
+ }
 
   __ bind(*stub->continuation());
 }
