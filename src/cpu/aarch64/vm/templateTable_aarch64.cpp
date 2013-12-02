@@ -3217,9 +3217,8 @@ void TemplateTable::_new() {
   // This is done before loading InstanceKlass to be consistent with the order
   // how Constant Pool is updated (see ConstantPool::klass_at_put)
   const int tags_offset = Array<u1>::base_offset_in_bytes();
-  // FIXME -- this was lsl(3) but it looks like it ought to be lsl(0)
   __ lea(rscratch1, Address(r0, r3, Address::lsl(0)));
-  __ ldr(rscratch1, Address(rscratch1, tags_offset));
+  __ ldrb(rscratch1, Address(rscratch1, tags_offset));
   __ cmp(rscratch1, JVM_CONSTANT_Class);
   __ br(Assembler::NE, slow_case);
 
@@ -3267,39 +3266,11 @@ void TemplateTable::_new() {
 
   // Allocation in the shared Eden, if allowed.
   //
-  // rdx: instance size in bytes
+  // r3: instance size in bytes
   if (allow_shared_alloc) {
     __ bind(allocate_shared);
 
-    ExternalAddress top((address)Universe::heap()->top_addr());
-    ExternalAddress end((address)Universe::heap()->end_addr());
-
-    const Register RtopAddr = r10;
-    const Register RendAddr = r11;
-
-    __ lea(RtopAddr, top);
-    __ lea(RendAddr, end);
-    __ ldr(r0, Address(RtopAddr, 0));
-
-    Label retry;
-    __ bind(retry);
-    __ lea(r1, Address(r0, r3));
-    __ ldr(rscratch1, Address(RendAddr, 0));
-    __ cmp(r1, rscratch1);
-    __ br(Assembler::GT, slow_case);
-
-    // Compare r0 with the top addr, and if still equal, store the new
-    // top addr in r1 at the address of the top addr pointer. Sets ZF if was
-    // equal, and clears it otherwise. Use lock prefix for atomicity on MPs.
-    //
-    // r0: object begin
-    // r1: object end
-    // r3: instance size in bytes
-
-    Label succeed;
-    // if someone beat us on the allocation, try again, otherwise continue
-    __ cmpxchgptr(r0, r1, RtopAddr, rscratch1, succeed, &retry);
-    __ bind(succeed);
+    __ eden_allocate(r0, r3, 0, r10, slow_case);
     __ incr_allocated_bytes(rthread, r3, 0, rscratch1);
   }
 
@@ -3308,16 +3279,16 @@ void TemplateTable::_new() {
     // zero, go directly to the header initialization.
     __ bind(initialize_object);
     __ sub(r3, r3, sizeof(oopDesc));
-    __ br(Assembler::EQ, initialize_header);
+    __ cbz(r3, initialize_header);
 
     // Initialize object fields
     {
-      __ mov(r2, r0);
+      __ add(r2, r0, sizeof(oopDesc));
       Label loop;
       __ bind(loop);
       __ str(zr, Address(__ post(r2, BytesPerLong)));
-      __ subs(r3, r3, BytesPerLong);
-      __ br(Assembler::NE, loop);
+      __ sub(r3, r3, BytesPerLong);
+      __ cbnz(r3, loop);
     }
 
     // initialize object header only.
