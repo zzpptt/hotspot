@@ -31,6 +31,9 @@
 #ifdef TARGET_ARCH_x86
 # include "interp_masm_x86.hpp"
 #endif
+#ifdef TARGET_ARCH_MODEL_aarch64
+# include "interp_masm_aarch64.hpp"
+#endif
 #ifdef TARGET_ARCH_MODEL_sparc
 # include "interp_masm_sparc.hpp"
 #endif
@@ -103,9 +106,12 @@ class TemplateTable: AllStatic {
   static Template        _template_table_wide[Bytecodes::number_of_codes];
 
   static Template*       _desc;                  // the current template to be generated
+ public:
   static Bytecodes::Code bytecode()              { return _desc->bytecode(); }
 
+ private:
   static BarrierSet*     _bs;                    // Cache the barrier set.
+
  public:
   //%note templates_1
   static InterpreterMacroAssembler* _masm;       // the assembler used when generating templates
@@ -360,6 +366,9 @@ class TemplateTable: AllStatic {
 #endif
 #ifdef TARGET_ARCH_MODEL_x86_64
 # include "templateTable_x86_64.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_aarch64
+# include "templateTable_aarch64.hpp"
 #endif
 #ifdef TARGET_ARCH_MODEL_sparc
 # include "templateTable_sparc.hpp"
