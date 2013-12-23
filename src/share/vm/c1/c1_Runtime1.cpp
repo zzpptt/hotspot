@@ -58,6 +58,9 @@
 #include "utilities/copy.hpp"
 #include "utilities/events.hpp"
 
+#ifdef BUILTIN_SIM
+#include "../../../../../../simulator/simulator.hpp"
+#endif
 
 // Implementation of StubAssembler
 
@@ -205,11 +208,17 @@ void Runtime1::generate_blob_for(BufferBlob* buffer_blob, StubID id) {
 #if defined(SPARC) || defined(PPC)
     case handle_exception_nofpu_id:  // Unused on sparc
 #endif
+#ifdef TARGET_ARCH_aarch64
+    case throw_index_exception_id:
+    case throw_array_store_exception_id:
+    case deoptimize_id:
+#endif
       break;
 
     // All other stubs should have oopmaps
     default:
       assert(oop_maps != NULL, "must have an oopmap");
+      break;
   }
 #endif
 
@@ -224,6 +233,25 @@ void Runtime1::generate_blob_for(BufferBlob* buffer_blob, StubID id) {
                                                  sasm->frame_size(),
                                                  oop_maps,
                                                  sasm->must_gc_arguments());
+#ifdef BUILTIN_SIM
+  if (NotifySimulator) {
+    size_t len = 65536;
+    char *name = new char[len];
+
+    // tell the sim about the new stub code
+    AArch64Simulator *simulator = AArch64Simulator::get_current(UseSimulatorCache, DisableBCCheck);
+    strncpy(name, name_for(id), len);
+    // replace spaces with underscore so we can write to file and reparse
+    for (char *p = strpbrk(name, " "); p; p = strpbrk(p, " ")) {
+      *p = '_';
+    }
+    unsigned char *base = blob->code_begin();
+    simulator->notifyCompile(name, base);
+    // code does not get relocated so just pass offset 0 and the code is live
+    simulator->notifyRelocate(base, 0);
+//    delete[] name;
+  }
+#endif
   // install blob
   assert(blob != NULL, "blob must exist");
   _blobs[id] = blob;
@@ -938,7 +966,6 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* thread, Runtime1::StubID stub_i
   }
 
   // Now copy code back
-
   {
     MutexLockerEx ml_patch (Patching_lock, Mutex::_no_safepoint_check_flag);
     //
@@ -1039,7 +1066,7 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* thread, Runtime1::StubID stub_i
           ShouldNotReachHere();
         }
 
-#if defined(SPARC) || defined(PPC)
+#if defined(SPARC) || defined(PPC) || defined(AARCH64)
         if (load_klass_or_mirror_patch_id ||
             stub_id == Runtime1::load_appendix_patching_id) {
           // Update the location in the nmethod with the proper
@@ -1114,12 +1141,19 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* thread, Runtime1::StubID stub_i
           ICache::invalidate_range(instr_pc, *byte_count);
           NativeGeneralJump::replace_mt_safe(instr_pc, copy_buff);
 
-          if (load_klass_or_mirror_patch_id ||
-              stub_id == Runtime1::load_appendix_patching_id) {
-            relocInfo::relocType rtype =
-              (stub_id == Runtime1::load_klass_patching_id) ?
-                                   relocInfo::metadata_type :
-                                   relocInfo::oop_type;
+          if (load_klass_or_mirror_patch_id
+              || stub_id == Runtime1::load_appendix_patching_id
+	      AARCH64_ONLY(|| stub_id == Runtime1::access_field_patching_id)) {
+            relocInfo::relocType rtype;
+	    switch(stub_id) {
+	    case Runtime1::load_klass_patching_id:
+	      rtype = relocInfo::metadata_type; break;
+	    case Runtime1::access_field_patching_id:
+	      rtype = relocInfo::section_word_type; break;
+	    default:
+	      rtype = relocInfo::oop_type; break;
+	    }
+                                   ;
             // update relocInfo to metadata
             nmethod* nm = CodeCache::find_nmethod(instr_pc);
             assert(nm != NULL, "invalid nmethod_pc");
@@ -1143,6 +1177,30 @@ JRT_ENTRY(void, Runtime1::patch_code(JavaThread* thread, Runtime1::StubID stub_i
             relocInfo::change_reloc_info_for_address(&iter2, (address) instr_pc2,
                                                      relocInfo::none, rtype);
           }
+#endif
+#if defined(TARGET_ARCH_aarch64)
+            // Update the location in the nmethod with the proper
+            // metadata.
+            RelocIterator mds(nm, instr_pc, instr_pc + 1);
+            bool found = false;
+            while (mds.next() && !found) {
+              if (mds.type() == relocInfo::oop_type) {
+                assert(stub_id == Runtime1::load_mirror_patching_id, "wrong stub id");
+                oop_Relocation* r = mds.oop_reloc();
+                oop* oop_adr = r->oop_addr();
+                *oop_adr = mirror();
+                r->fix_oop_relocation();
+                found = true;
+              } else if (mds.type() == relocInfo::metadata_type) {
+                assert(stub_id == Runtime1::load_klass_patching_id, "wrong stub id");
+                metadata_Relocation* r = mds.metadata_reloc();
+                Metadata** metadata_adr = r->metadata_addr();
+                *metadata_adr = load_klass();
+                r->fix_metadata_relocation();
+                found = true;
+              }
+            }
+            assert(found, "the metadata must exist!");
 #endif
           }
 
@@ -1180,6 +1238,7 @@ JRT_END
 // completes we can check for deoptimization. This simplifies the
 // assembly code in the cpu directories.
 //
+#ifndef TARGET_ARCH_aarch64
 int Runtime1::move_klass_patching(JavaThread* thread) {
 //
 // NOTE: we are still in Java
@@ -1264,7 +1323,7 @@ int Runtime1::access_field_patching(JavaThread* thread) {
 
   return caller_is_deopted();
 JRT_END
-
+#endif
 
 JRT_LEAF(void, Runtime1::trace_block_entry(jint block_id))
   // for now we just print out the block id

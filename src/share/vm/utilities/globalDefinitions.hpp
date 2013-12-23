@@ -373,6 +373,9 @@ const uint64_t KlassEncodingMetaspaceMax = (uint64_t(max_juint) + 1) << LogKlass
 #ifdef TARGET_ARCH_x86
 # include "globalDefinitions_x86.hpp"
 #endif
+#ifdef TARGET_ARCH_aarch64
+# include "globalDefinitions_aarch64.hpp"
+#endif
 #ifdef TARGET_ARCH_sparc
 # include "globalDefinitions_sparc.hpp"
 #endif
