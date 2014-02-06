@@ -265,6 +265,8 @@ static char cpu_arch[] = "sparcv9";
 #  else
 static char cpu_arch[] = "sparc";
 #  endif
+#elif defined(AARCH64)
+static char cpu_arch[] = "aarch64";
 #else
 #error Add appropriate cpu_arch setting
 #endif
@@ -356,7 +358,7 @@ void os::init_system_properties_values() {
  *        ...
  *        7: The default directories, normally /lib and /usr/lib.
  */
-#if defined(AMD64) || defined(_LP64) && (defined(SPARC) || defined(PPC) || defined(S390))
+#if defined(AMD64) || defined(_LP64) && (defined(SPARC) || defined(PPC) || defined(S390)) || defined(BUILTIN_SIM)
 #define DEFAULT_LIBPATH "/usr/lib64:/lib64:/lib:/usr/lib"
 #else
 #define DEFAULT_LIBPATH "/lib:/usr/lib"
@@ -1411,8 +1413,12 @@ void os::Linux::clock_init() {
 
 #ifndef SYS_clock_getres
 
-#if defined(IA32) || defined(AMD64)
-#define SYS_clock_getres IA32_ONLY(266)  AMD64_ONLY(229)
+#if defined(IA32) || defined(AMD64) || defined(AARCH64)
+#ifdef BUILTIN_SIM
+#define SYS_clock_getres 229
+#else
+#define SYS_clock_getres IA32_ONLY(266)  AMD64_ONLY(229) AARCH64_ONLY(114)
+#endif
 #define sys_clock_getres(x,y)  ::syscall(SYS_clock_getres, x, y)
 #else
 #warning "SYS_clock_getres not defined for this platform, disabling fast_thread_cpu_time"
@@ -1559,6 +1565,8 @@ void os::abort(bool dump_core) {
     jio_snprintf(buf, sizeof(buf), UINTX_FORMAT, os::current_thread_id());
     out.print_raw_cr(buf);
     out.print_raw_cr("Dumping core ...");
+    out.print_raw_cr("LOOPING...");
+    for (;;);
 #endif
     ::abort(); // dump core
   }
@@ -1947,6 +1955,10 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen)
   #define EM_486          6               /* Intel 80486 */
   #endif
 
+  #ifndef EM_AARCH64
+  #define EM_AARCH64	183
+  #endif
+
   static const arch_t arch_array[]={
     {EM_386,         EM_386,     ELFCLASS32, ELFDATA2LSB, (char*)"IA 32"},
     {EM_486,         EM_386,     ELFCLASS32, ELFDATA2LSB, (char*)"IA 32"},
@@ -1963,7 +1975,8 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen)
     {EM_MIPS_RS3_LE, EM_MIPS_RS3_LE, ELFCLASS32, ELFDATA2LSB, (char*)"MIPSel"},
     {EM_MIPS,        EM_MIPS,    ELFCLASS32, ELFDATA2MSB, (char*)"MIPS"},
     {EM_PARISC,      EM_PARISC,  ELFCLASS32, ELFDATA2MSB, (char*)"PARISC"},
-    {EM_68K,         EM_68K,     ELFCLASS32, ELFDATA2MSB, (char*)"M68k"}
+    {EM_68K,         EM_68K,     ELFCLASS32, ELFDATA2MSB, (char*)"M68k"},
+    {EM_AARCH64,     EM_AARCH64, ELFCLASS64, ELFDATA2LSB, (char*)"AARCH64"},
   };
 
   #if  (defined IA32)
@@ -1994,9 +2007,11 @@ void * os::dll_load(const char *filename, char *ebuf, int ebuflen)
     static  Elf32_Half running_arch_code=EM_MIPS;
   #elif  (defined M68K)
     static  Elf32_Half running_arch_code=EM_68K;
+  #elif  (defined AARCH64)
+    static  Elf32_Half running_arch_code=EM_AARCH64;
   #else
     #error Method os::dll_load requires that one of following is defined:\
-         IA32, AMD64, IA64, __sparc, __powerpc__, ARM, S390, ALPHA, MIPS, MIPSEL, PARISC, M68K
+      IA32, AMD64, IA64, __sparc, __powerpc__, ARM, S390, ALPHA, MIPS, MIPSEL, PARISC, M68K, AARCH64
   #endif
 
   // Identify compatability class for VM's architecture and library's architecture
@@ -2849,12 +2864,7 @@ int os::Linux::sched_getcpu_syscall(void) {
   unsigned int cpu;
   int retval = -1;
 
-#if defined(IA32)
-# ifndef SYS_getcpu
-# define SYS_getcpu 318
-# endif
-  retval = syscall(SYS_getcpu, &cpu, NULL, NULL);
-#elif defined(AMD64)
+#if defined(AMD64) || defined(BUILTIN_SIM)
 // Unfortunately we have to bring all these macros here from vsyscall.h
 // to be able to compile on old linuxes.
 # define __NR_vgetcpu 2
@@ -2864,6 +2874,11 @@ int os::Linux::sched_getcpu_syscall(void) {
   typedef long (*vgetcpu_t)(unsigned int *cpu, unsigned int *node, unsigned long *tcache);
   vgetcpu_t vgetcpu = (vgetcpu_t)VSYSCALL_ADDR(__NR_vgetcpu);
   retval = vgetcpu(&cpu, NULL, NULL);
+#elif defined(IA32) || defined(AARCH64)
+# ifndef SYS_getcpu
+#  define SYS_getcpu AARCH64_ONLY(168) NOT_AARCH64(318)
+# endif
+  retval = syscall(SYS_getcpu, &cpu, NULL, NULL);
 #endif
 
   return (retval == -1) ? retval : cpu;
@@ -3310,7 +3325,7 @@ size_t os::Linux::find_large_page_size() {
 
 #ifndef ZERO
   large_page_size = IA32_ONLY(4 * M) AMD64_ONLY(2 * M) IA64_ONLY(256 * M) SPARC_ONLY(4 * M)
-                     ARM_ONLY(2 * M) PPC_ONLY(4 * M);
+                     ARM_ONLY(2 * M) PPC_ONLY(4 * M) AARCH64_ONLY(2 * M);
 #endif // ZERO
 
   FILE *fp = fopen("/proc/meminfo", "r");
@@ -5995,11 +6010,19 @@ void Parker::unpark() {
 extern char** environ;
 
 #ifndef __NR_fork
-#define __NR_fork IA32_ONLY(2) IA64_ONLY(not defined) AMD64_ONLY(57)
+#ifdef BUILTIN_SIM
+#define __NR_fork 57
+#else
+#define __NR_fork IA32_ONLY(2) IA64_ONLY(not defined) AMD64_ONLY(57) AARCH64_ONLY(1079)
+#endif
 #endif
 
 #ifndef __NR_execve
-#define __NR_execve IA32_ONLY(11) IA64_ONLY(1033) AMD64_ONLY(59)
+#ifdef BUILTIN_SIM
+#define __NR_execve 59
+#else
+#define __NR_execve IA32_ONLY(11) IA64_ONLY(1033) AMD64_ONLY(59) AARCH64_ONLY(221)
+#endif
 #endif
 
 // Run the specified command in a separate process. Return its exit value,
