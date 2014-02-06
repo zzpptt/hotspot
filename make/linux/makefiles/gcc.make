@@ -173,6 +173,7 @@ endif
 ARCHFLAG = $(ARCHFLAG/$(BUILDARCH))
 ARCHFLAG/i486    = -m32 -march=i586
 ARCHFLAG/amd64   = -m64 $(STACK_ALIGNMENT_OPT)
+ARCHFLAG/aarch64 =
 ARCHFLAG/ia64    =
 ARCHFLAG/sparc   = -m32 -mcpu=v9
 ARCHFLAG/sparcv9 = -m64 -mcpu=v9
@@ -344,8 +345,10 @@ else
   # Note: The Itanium gcc compiler crashes when using -gstabs.
   DEBUG_CFLAGS/ia64  = -g
   DEBUG_CFLAGS/amd64 = -g
+  DEBUG_CFLAGS/aarch64 = -g
   DEBUG_CFLAGS/arm   = -g
   DEBUG_CFLAGS/ppc   = -g
+  DEBUG_CFLAGS/zero  = -g
   DEBUG_CFLAGS += $(DEBUG_CFLAGS/$(BUILDARCH))
   ifeq ($(DEBUG_CFLAGS/$(BUILDARCH)),)
       ifeq ($(USE_CLANG), true)
@@ -359,8 +362,10 @@ else
   ifeq ($(ENABLE_FULL_DEBUG_SYMBOLS),1)
     FASTDEBUG_CFLAGS/ia64  = -g
     FASTDEBUG_CFLAGS/amd64 = -g
+    FASTDEBUG_CFLAGS/aarch64 = -g
     FASTDEBUG_CFLAGS/arm   = -g
     FASTDEBUG_CFLAGS/ppc   = -g
+    FASTDEBUG_CFLAGS/zero  = -g
     FASTDEBUG_CFLAGS += $(DEBUG_CFLAGS/$(BUILDARCH))
     ifeq ($(FASTDEBUG_CFLAGS/$(BUILDARCH)),)
       ifeq ($(USE_CLANG), true)
@@ -373,8 +378,10 @@ else
   
     OPT_CFLAGS/ia64  = -g
     OPT_CFLAGS/amd64 = -g
+    OPT_CFLAGS/aarch64 = -g
     OPT_CFLAGS/arm   = -g
     OPT_CFLAGS/ppc   = -g
+    OPT_CFLAGS/zero  = -g
     OPT_CFLAGS += $(OPT_CFLAGS/$(BUILDARCH))
     ifeq ($(OPT_CFLAGS/$(BUILDARCH)),)
       ifeq ($(USE_CLANG), true)

@@ -53,6 +53,9 @@
 #ifdef TARGET_ARCH_x86
 # include "vmreg_x86.inline.hpp"
 #endif
+#ifdef TARGET_ARCH_aarch64
+# include "vmreg_aarch64.inline.hpp"
+#endif
 #ifdef TARGET_ARCH_sparc
 # include "vmreg_sparc.inline.hpp"
 #endif
@@ -71,6 +74,9 @@
 #endif
 #ifdef TARGET_ARCH_MODEL_x86_64
 # include "adfiles/ad_x86_64.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_aarch64
+# include "adfiles/ad_aarch64.hpp"
 #endif
 #ifdef TARGET_ARCH_MODEL_sparc
 # include "adfiles/ad_sparc.hpp"
@@ -1224,9 +1230,19 @@ void Deoptimization::load_class_by_index(constantPoolHandle constant_pool, int i
   load_class_by_index(constant_pool, index, THREAD);
   if (HAS_PENDING_EXCEPTION) {
     // Exception happened during classloading. We ignore the exception here, since it
-    // is going to be rethrown since the current activation is going to be deoptimzied and
+    // is going to be rethrown since the current activation is going to be deoptimized and
     // the interpreter will re-execute the bytecode.
     CLEAR_PENDING_EXCEPTION;
+    // Class loading called java code which may have caused a stack
+    // overflow. If the exception was thrown right before the return
+    // to the runtime the stack is no longer guarded. Reguard the
+    // stack otherwise if we return to the uncommon trap blob and the
+    // stack bang causes a stack overflow we crash.
+    assert(THREAD->is_Java_thread(), "only a java thread can be here");
+    JavaThread* thread = (JavaThread*)THREAD;
+    bool guard_pages_enabled = thread->stack_yellow_zone_enabled();
+    if (!guard_pages_enabled) guard_pages_enabled = thread->reguard_stack();
+    assert(guard_pages_enabled, "stack banging in uncommon trap blob may cause crash");
   }
 }
 
