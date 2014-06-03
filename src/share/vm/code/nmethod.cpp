@@ -46,6 +46,10 @@
 #include "shark/sharkCompiler.hpp"
 #endif
 
+#ifdef BUILTIN_SIM
+#include "../../../../../simulator/simulator.hpp"
+#endif
+
 #ifdef DTRACE_ENABLED
 
 // Only bother with this argument setup if dtrace is available
@@ -689,6 +693,15 @@ nmethod::nmethod(
       Universe::heap()->register_nmethod(this);
     }
     debug_only(verify_scavenge_root_oops());
+
+#ifdef BUILTIN_SIM
+    if (NotifySimulator) {
+      unsigned char *base = code_buffer->insts()->start();
+      long delta = entry_point() - base;
+      AArch64Simulator::get_current(UseSimulatorCache, DisableBCCheck)->notifyRelocate(base, delta);
+    }
+#endif
+
     CodeCache::commit(this);
   }
 
@@ -886,6 +899,14 @@ nmethod::nmethod(
       Universe::heap()->register_nmethod(this);
     }
     debug_only(verify_scavenge_root_oops());
+
+#ifdef BUILTIN_SIM
+    if (NotifySimulator) {
+      unsigned char *base = code_buffer->insts()->start();
+      long delta = entry_point() - base;
+      AArch64Simulator::get_current(UseSimulatorCache, DisableBCCheck)->notifyRelocate(base, delta);
+    }
+#endif
 
     CodeCache::commit(this);
 

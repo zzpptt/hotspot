@@ -62,6 +62,10 @@
 # include "nativeInst_x86.hpp"
 # include "vmreg_x86.inline.hpp"
 #endif
+#ifdef TARGET_ARCH_aarch64
+# include "nativeInst_aarch64.hpp"
+# include "vmreg_aarch64.inline.hpp"
+#endif
 #ifdef TARGET_ARCH_sparc
 # include "nativeInst_sparc.hpp"
 # include "vmreg_sparc.inline.hpp"
@@ -80,6 +84,10 @@
 #endif
 #ifdef COMPILER1
 #include "c1/c1_Runtime1.hpp"
+#endif
+
+#ifdef BUILTIN_SIM
+#include "../../../../../../simulator/simulator.hpp"
 #endif
 
 // Shared stub locations
@@ -125,6 +133,7 @@ void SharedRuntime::generate_stubs() {
 #endif // COMPILER2
 }
 
+  // FIXME
 #include <math.h>
 
 #ifndef USDT2
@@ -494,6 +503,13 @@ address SharedRuntime::raw_exception_handler_for_return_address(JavaThread* thre
     assert(!nm->is_native_method(), "no exception handler");
     assert(nm->header_begin() != nm->exception_begin(), "no exception handler");
     if (nm->is_deopt_pc(return_address)) {
+      // If we come here because of a stack overflow, the stack may be
+      // unguarded. Reguard the stack otherwise if we return to the
+      // deopt blob and the stack bang causes a stack overflow we
+      // crash.
+      bool guard_pages_enabled = thread->stack_yellow_zone_enabled();
+      if (!guard_pages_enabled) guard_pages_enabled = thread->reguard_stack();
+      assert(guard_pages_enabled, "stack banging in deopt blob may cause crash");
       return SharedRuntime::deopt_blob()->unpack_with_exception();
     } else {
       return nm->exception_begin();
@@ -2490,7 +2506,25 @@ AdapterHandlerEntry* AdapterHandlerLibrary::get_adapter(methodHandle method) {
       CompileBroker::handle_full_code_cache();
       return NULL; // Out of CodeCache space
     }
+#ifdef BUILTIN_SIM
+    address old_i2c = entry->get_i2c_entry();
+    address old_c2i = entry->get_c2i_entry();
+    AArch64Simulator *sim =  (NotifySimulator ? AArch64Simulator::get_current(UseSimulatorCache, DisableBCCheck) : NULL);
+#endif
+
     entry->relocate(B->content_begin());
+
+#ifdef BUILTIN_SIM
+    if (NotifySimulator) {
+      address new_i2c = entry->get_i2c_entry();
+      address new_c2i = entry->get_c2i_entry();
+      long offset = new_i2c - old_i2c;
+      sim->notifyRelocate(old_i2c, offset);
+      offset = new_c2i - old_c2i;
+      sim->notifyRelocate(old_c2i, offset);
+    }
+#endif
+
 #ifndef PRODUCT
     // debugging suppport
     if (PrintAdapterHandlers || PrintStubCode) {
