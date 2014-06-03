@@ -1459,7 +1459,6 @@ void Arguments::set_use_compressed_oops() {
 #endif // ZERO
 }
 
-
 // NOTE: set_use_compressed_klass_ptrs() must be called after calling
 // set_use_compressed_oops().
 void Arguments::set_use_compressed_klass_ptrs() {

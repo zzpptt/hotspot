@@ -1605,6 +1605,22 @@ void LIRGenerator::CardTableModRef_post_barrier(LIR_OprDesc* addr, LIR_OprDesc* 
     __ move(LIR_OprFact::intConst(0), tmp_zero);
     __ move(tmp_zero, card_addr);
   }
+#elsif defined(TARGET_ARCH_aarch64)
+  LIR_Opr tmp = new_pointer_register();
+  if (TwoOperandLIRForm) {
+    __ move(addr, tmp);
+    __ unsigned_shift_right(tmp, CardTableModRefBS::card_shift, tmp);
+  } else {
+    __ unsigned_shift_right(addr, CardTableModRefBS::card_shift, tmp);
+  }
+  if (can_inline_as_constant(card_table_base)) {
+    __ move(LIR_OprFact::intConst(0),
+              new LIR_Address(tmp, card_table_base->as_jint(), T_BYTE));
+  } else {
+    __ move(LIR_OprFact::intConst(0),
+              new LIR_Address(tmp, load_constant(card_table_base),
+                              T_BYTE));
+  }
 #else // ARM
   LIR_Opr tmp = new_pointer_register();
   if (TwoOperandLIRForm) {
@@ -2068,7 +2084,7 @@ void LIRGenerator::do_UnsafeGetRaw(UnsafeGetRaw* x) {
     assert(log2_scale == 0, "must not have a scale");
     addr = new LIR_Address(base_op, index_op->as_jint(), dst_type);
   } else {
-#ifdef X86
+#if defined(X86) || defined(AARCH64)
 #ifdef _LP64
     if (!index_op->is_illegal() && index_op->type() == T_INT) {
       LIR_Opr tmp = new_pointer_register();
@@ -3118,10 +3134,18 @@ void LIRGenerator::do_Intrinsic(Intrinsic* x) {
     break;
 
   case vmIntrinsics::_loadFence :
+#ifndef AARCH64
     if (os::is_MP()) __ membar_acquire();
+#else
+    if (os::is_MP()) __ membar_loadstore();
+#endif
     break;
   case vmIntrinsics::_storeFence:
+#ifndef AARCH64
     if (os::is_MP()) __ membar_release();
+#else
+    if (os::is_MP()) __ membar_storeload();
+#endif
     break;
   case vmIntrinsics::_fullFence :
     if (os::is_MP()) __ membar();
