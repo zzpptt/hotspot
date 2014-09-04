@@ -29,6 +29,9 @@
 #ifdef TARGET_ARCH_x86
 # include "vm_version_x86.hpp"
 #endif
+#ifdef TARGET_ARCH_aarch64
+# include "vm_version_aarch64.hpp"
+#endif
 #ifdef TARGET_ARCH_sparc
 # include "vm_version_sparc.hpp"
 #endif
@@ -189,6 +192,7 @@ const char* Abstract_VM_Version::jre_release_version() {
                  ARM_ONLY("arm")                 \
                  PPC32_ONLY("ppc")               \
                  PPC64_ONLY("ppc64")             \
+                 AARCH64_ONLY("aarch64")	 \
                  SPARC_ONLY("sparc")
 #endif // ZERO
 
