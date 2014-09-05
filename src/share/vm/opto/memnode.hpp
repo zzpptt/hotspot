@@ -129,6 +129,9 @@ public:
   // the given memory state?  (The state may or may not be in(Memory).)
   Node* can_see_stored_value(Node* st, PhaseTransform* phase) const;
 
+  // True if this memory is volatile
+  bool is_volatile() const;
+
 #ifndef PRODUCT
   static void dump_adr_type(const Node* mem, const TypePtr* adr_type, outputStream *st);
   virtual void dump_spec(outputStream *st) const;
@@ -485,6 +488,12 @@ public:
   // Conservatively release stores of object references in order to
   // ensure visibility of object initialization.
   static inline MemOrd release_if_reference(const BasicType t) {
+    // AArch64 doesn't need a release store because if there is an
+    // address dependency between a read and a write, then those
+    // memory accesses are observed in program order by all observers
+    // within the shareability domain.
+    AARCH64_ONLY(return unordered);
+
     const MemOrd mo = (t == T_ARRAY ||
                        t == T_ADDRESS || // Might be the address of an object reference (`boxing').
                        t == T_OBJECT) ? release : unordered;
