@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1997, 2015, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1997, 2014, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -33,6 +33,9 @@
 #include "utilities/top.hpp"
 #ifdef TARGET_ARCH_x86
 # include "nativeInst_x86.hpp"
+#endif
+#ifdef TARGET_ARCH_aarch64
+# include "nativeInst_aarch64.hpp"
 #endif
 #ifdef TARGET_ARCH_sparc
 # include "nativeInst_sparc.hpp"
@@ -99,19 +102,31 @@ class StubRoutines: AllStatic {
 
   // Dependencies
   friend class StubGenerator;
-#if defined STUBROUTINES_MD_HPP
-# include STUBROUTINES_MD_HPP
-#elif defined TARGET_ARCH_MODEL_x86_32
+#ifdef TARGET_ARCH_MODEL_x86_32
 # include "stubRoutines_x86_32.hpp"
-#elif defined TARGET_ARCH_MODEL_x86_64
+#endif
+#ifdef TARGET_ARCH_MODEL_x86_64
 # include "stubRoutines_x86_64.hpp"
-#elif defined TARGET_ARCH_MODEL_sparc
+#endif
+#ifdef TARGET_ARCH_MODEL_aarch64
+# include "stubRoutines_aarch64.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_sparc
 # include "stubRoutines_sparc.hpp"
-#elif defined TARGET_ARCH_MODEL_zero
+#endif
+#ifdef TARGET_ARCH_MODEL_zero
 # include "stubRoutines_zero.hpp"
-#elif defined TARGET_ARCH_MODEL_ppc_64
+#endif
+#ifdef TARGET_ARCH_MODEL_arm
+# include "stubRoutines_arm.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_ppc_32
+# include "stubRoutines_ppc_32.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_ppc_64
 # include "stubRoutines_ppc_64.hpp"
 #endif
+
 
   static jint    _verify_oop_count;
   static address _verify_oop_subroutine_entry;
@@ -224,6 +239,7 @@ class StubRoutines: AllStatic {
   static double (*_intrinsic_cos)(double);
   static double (*_intrinsic_tan)(double);
 
+#ifndef BUILTIN_SIM
   // Safefetch stubs.
   static address _safefetch32_entry;
   static address _safefetch32_fault_pc;
@@ -231,6 +247,7 @@ class StubRoutines: AllStatic {
   static address _safefetchN_entry;
   static address _safefetchN_fault_pc;
   static address _safefetchN_continuation_pc;
+#endif
 
  public:
   // Initialization/Testing
@@ -401,10 +418,10 @@ class StubRoutines: AllStatic {
     return _intrinsic_tan(d);
   }
 
+#ifndef BUILTIN_SIM
   //
   // Safefetch stub support
   //
-
   typedef int      (*SafeFetch32Stub)(int*      adr, int      errValue);
   typedef intptr_t (*SafeFetchNStub) (intptr_t* adr, intptr_t errValue);
 
@@ -428,6 +445,7 @@ class StubRoutines: AllStatic {
     ShouldNotReachHere();
     return NULL;
   }
+#endif
 
   //
   // Default versions of the above arraycopy functions for platforms which do
@@ -448,6 +466,7 @@ class StubRoutines: AllStatic {
   static void arrayof_oop_copy_uninit(HeapWord* src, HeapWord* dest, size_t count);
 };
 
+#ifndef BUILTIN_SIM
 // Safefetch allows to load a value from a location that's not known
 // to be valid. If the load causes a fault, the error value is returned.
 inline int SafeFetch32(int* adr, int errValue) {
@@ -458,5 +477,6 @@ inline intptr_t SafeFetchN(intptr_t* adr, intptr_t errValue) {
   assert(StubRoutines::SafeFetchN_stub(), "stub not yet generated");
   return StubRoutines::SafeFetchN_stub()(adr, errValue);
 }
+#endif
 
 #endif // SHARE_VM_RUNTIME_STUBROUTINES_HPP
