@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 1998, 2015, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 1998, 2012, Oracle and/or its affiliates. All rights reserved.
  * DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
  *
  * This code is free software; you can redistribute it and/or modify it
@@ -32,17 +32,28 @@
 #ifdef COMPILER2
 #include "opto/adlcVMDeps.hpp"
 #include "utilities/ostream.hpp"
-#if defined ADGLOBALS_MD_HPP
-# include ADGLOBALS_MD_HPP
-#elif defined TARGET_ARCH_MODEL_x86_32
+#ifdef TARGET_ARCH_MODEL_x86_32
 # include "adfiles/adGlobals_x86_32.hpp"
-#elif defined TARGET_ARCH_MODEL_x86_64
+#endif
+#ifdef TARGET_ARCH_MODEL_x86_64
 # include "adfiles/adGlobals_x86_64.hpp"
-#elif defined TARGET_ARCH_MODEL_sparc
+#endif
+#ifdef TARGET_ARCH_MODEL_aarch64
+# include "adfiles/adGlobals_aarch64.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_sparc
 # include "adfiles/adGlobals_sparc.hpp"
-#elif defined TARGET_ARCH_MODEL_zero
+#endif
+#ifdef TARGET_ARCH_MODEL_zero
 # include "adfiles/adGlobals_zero.hpp"
-#elif defined TARGET_ARCH_MODEL_ppc_64
+#endif
+#ifdef TARGET_ARCH_MODEL_arm
+# include "adfiles/adGlobals_arm.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_ppc_32
+# include "adfiles/adGlobals_ppc_32.hpp"
+#endif
+#ifdef TARGET_ARCH_MODEL_ppc_64
 # include "adfiles/adGlobals_ppc_64.hpp"
 #endif
 #endif
@@ -155,6 +166,9 @@ public:
 
 #ifdef TARGET_ARCH_x86
 # include "vmreg_x86.hpp"
+#endif
+#ifdef TARGET_ARCH_aarch64
+# include "vmreg_aarch64.hpp"
 #endif
 #ifdef TARGET_ARCH_sparc
 # include "vmreg_sparc.hpp"
