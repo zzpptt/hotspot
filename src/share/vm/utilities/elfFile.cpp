@@ -261,7 +261,7 @@ bool ElfFile::specifies_noexecstack() {
       }
     }
   }
-// AARCH64 defaults to noexecstack. All others default to execstack.
+// x86 defaults to execstack, AARCH64 defaults to noexecstack
 #ifdef AARCH64
   return true;
 #else

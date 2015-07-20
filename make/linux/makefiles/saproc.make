@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2005, 2015, Oracle and/or its affiliates. All rights reserved.
+# Copyright (c) 2005, 2013, Oracle and/or its affiliates. All rights reserved.
 # DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
 #
 # This code is free software; you can redistribute it and/or modify it
@@ -63,19 +63,17 @@ endif
 # also, we don't build SA on Itanium or zero.
 
 ifneq ($(wildcard $(AGENT_DIR)),)
-ifneq ($(filter-out ia64 zero,$(SRCARCH)),)
+ifneq ($(filter-out ia64 zero aarch64,$(SRCARCH)),)
   BUILDLIBSAPROC = $(LIBSAPROC)
 endif
 endif
 
 ifneq ($(ALT_SASRCDIR),)
-ALT_SAINCDIR=-I$(ALT_SASRCDIR) -DALT_SASRCDIR
+ALT_SAINCDIR=-I$(ALT_SASRCDIR)
 else
 ALT_SAINCDIR=
 endif
 SA_LFLAGS = $(MAPFLAG:FILENAME=$(SAMAPFILE)) $(LDFLAGS_HASH_STYLE)
-
-SAARCH ?= $(BUILDARCH)
 
 $(LIBSAPROC): $(SASRCFILES) $(SAMAPFILE)
 	$(QUIETLY) if [ "$(BOOT_JAVA_HOME)" = "" ]; then \
@@ -83,7 +81,7 @@ $(LIBSAPROC): $(SASRCFILES) $(SAMAPFILE)
 	  exit 1; \
 	fi
 	@echo Making SA debugger back-end...
-	$(QUIETLY) $(CC) -D$(SAARCH) -D_GNU_SOURCE                      \
+	$(QUIETLY) $(CC) -D$(BUILDARCH) -D_GNU_SOURCE                   \
 		   -D_FILE_OFFSET_BITS=64                               \
                    $(SYMFLAG) $(ARCHFLAG) $(SHARED_FLAG) $(PICFLAG)     \
 	           -I$(SASRCDIR)                                        \
